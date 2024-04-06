@@ -1,0 +1,2 @@
+・自分用の備忘録
+今まで使ったExcelとCustomTkinterの技術をまとめたもの
