@@ -1,7 +1,16 @@
 import customtkinter as ctk
+from tkinter import filedialog
 import win32api
 import win32print
 import os
+import openpyxl as oxl
+#エラー発生時の復帰処理
+import psutil
+#pdf変換
+import win32com
+import win32com.client
+import os
+import pythoncom
 
 FONT_TYPE = 'meiryo'
 
@@ -10,38 +19,47 @@ class MyTabView(ctk.CTkTabview):
         super().__init__(master, **kwargs)
 
         # create tabs
-        self.add("tab 1")
+        self.add("Export")
         self.add("tab 2")
 
         self._segmented_button.configure(font=(FONT_TYPE, -15))
 
         # add widgets on tabs
-        self.tab1_content = Tab1Content(master=self.tab("tab 1"))
+        self.tab1_content = tab_export(master=self.tab("Export"))
         self.tab1_content.grid(row=0, column=0, padx=20, pady=10)
 
         self.tab2_content = Tab2Content(master=self.tab("tab 2"))
         self.tab2_content.grid(row=0, column=0, padx=20, pady=10)
 
-class Tab1Content(ctk.CTkFrame):
+class tab_export(ctk.CTkFrame):
     def __init__(self, master=None, **kwargs):
         super().__init__(master, **kwargs)
-        window_width = self.winfo_screenwidth() // 5
+        self.back_instance = Back_end()
+        window_width = self.winfo_screenwidth() // 4.4
         window_height = self.winfo_screenheight() // 5
-        self.label = ctk.CTkLabel(master=self, text="Tab 1 Content", font=(FONT_TYPE, 16))
+        self.label = ctk.CTkLabel(master=self, text="", font=(FONT_TYPE, 16))
         self.label.grid(ipadx=window_width, ipady=window_height)
         self.widget()
     
     def widget(self):
         self.read_file_frame = ReadFileFrame(master=self, header_name="ファイル読み込み")
         self.read_file_frame.grid(row=0, column=0, padx=20, pady=(0,400), sticky="ew")
+        self.explain_pdf = ctk.CTkLabel(master=self, text='シートを全て.pdfに変換', font=(FONT_TYPE,16))
+        self.explain_pdf.grid(row=0, column=0)
+        self.Button_pdf = ctk.CTkButton(master=self, text='PDF変換', command=lambda: self.back_instance.pdf_exporter(file_data=self.read_file_frame.get_file_path(), outPutFolder="FOLDERPATH"))
+        self.Button_pdf.grid(row=0, column=0, padx=(400,0), pady=(0,0))
+        self.explain_png = ctk.CTkLabel(master=self, text='シートを全て.pngに変換', font=(FONT_TYPE,16))
+        self.explain_png.grid(row=0, column=0, pady=(100,0))
+        self.Button_png = ctk.CTkButton(master=self, text = 'PNG変換', command=lambda:self.pdf_exporter())
+        self.Button_png.grid(row=0, column=0, padx=(400,0), pady=(100,0))
 
 
 class Tab2Content(ctk.CTkFrame):
     def __init__(self, master=None, **kwargs):
         super().__init__(master, **kwargs)
-        window_width = self.winfo_screenwidth() // 5
+        window_width = self.winfo_screenwidth() // 4.4
         window_height = self.winfo_screenheight() // 5
-        self.label = ctk.CTkLabel(master=self, text="Tab 2 Content", font=(FONT_TYPE, 16))
+        self.label = ctk.CTkLabel(master=self, text="", font=(FONT_TYPE, 16))
         self.label.grid(ipadx=window_width, ipady=window_height)
         self.csv_filepath = None
         self.widget()
@@ -100,11 +118,14 @@ class ReadFileFrame(ctk.CTkFrame):
         """
         開くボタンが押されたときのコールバック。暫定機能として、ファイルの中身をprintする
         """
-        file_name = self.textbox.get()
-        if file_name is not None or len(file_name) != 0:
-            with open(file_name) as f:
-                data = f.read()
-                print(data)
+        try:
+            file_name = self.textbox.get()
+            if file_name is not None or len(file_name) != 0:
+                with open(file_name) as f:
+                    data = f.read()
+                    print(data)
+        except:
+            None
             
     @staticmethod
     def file_read():
@@ -112,13 +133,67 @@ class ReadFileFrame(ctk.CTkFrame):
         ファイル選択ダイアログを表示する
         """
         current_dir = os.path.abspath(os.path.dirname(__file__))
-        file_path = ctk.filedialog.askopenfilename(filetypes=[("xlsxファイル","*.xlsx")],initialdir=current_dir)
+        file_path = filedialog.askopenfilename(filetypes=[("xlsxファイル","*.xlsx")],initialdir=current_dir)
 
         if len(file_path) != 0:
             return file_path
         else:
             # ファイル選択がキャンセルされた場合
             return None
+
+    def get_file_path(self):
+        """
+        テキストボックスからファイルパスを取得して返す。
+        """
+        return self.textbox.get()
+
+class Back_end():
+    def __init__(self):
+        pass
+
+    def printer(self, file_path):
+        try:
+            # Use win32api to print the file directly
+            win32api.ShellExecute(
+                0,
+                "print",
+                file_path,
+                '/c:"%s"' % win32print.GetDefaultPrinter(),
+                ".",
+                0
+            )
+        except:
+            print("エラー : 印刷エラーです。コピー機を確認してください")
+    
+    def pdf_exporter(self, file_data, outPutFolder):
+        try:
+            if file_data == True:
+                pythoncom.CoInitialize()
+                excel = win32com.client.Dispatch("Excel.Application")
+                if not os.path.exists(outPutFolder):
+                    os.makedirs(outPutFolder)
+                excel_data = oxl.load_workbook(file_data)
+                sheets_name = excel_data.sheetnames
+
+                base, ext = os.path.splitext(file_data)
+                if(ext == '.xlsx' and '~$' not in base):
+                    for j in sheets_name:
+                        wb1 = excel.Workbooks.Open(file_data)
+                        wb1.WorkSheets(j).Select()
+                        output_path = os.path.join(outPutFolder, f'{j}.pdf')
+                        if os.path.exists(output_path):
+                            os.remove(output_path)
+                        wb1.ActiveSheet.ExportAsFixedFormat(0, output_path)
+                    wb1.Close()
+        except Exception:
+            self.task_kill()
+
+    #Excelが既に開かれていた場合にTask Killを実行
+    def task_kill(self):
+        for proc in psutil.process_iter(['pid', 'name']):
+            if proc.info['name'] == 'EXCEL.EXE':
+                pid = proc.info['pid']
+                os.kill(pid, 9)
 
 class App(ctk.CTk):
     def __init__(self):
@@ -130,22 +205,6 @@ class App(ctk.CTk):
 
         self.tab_view = MyTabView(master=self)
         self.tab_view.grid(row=0, column=0, padx=15)
-
-#印刷する関数
-def printer(file_path):
-    try:
-        # Use win32api to print the file directly
-        win32api.ShellExecute(
-            0,
-            "print",
-            file_path,
-            '/c:"%s"' % win32print.GetDefaultPrinter(),
-            ".",
-            0
-        )
-    except:
-        print("エラー : 印刷エラーです。コピー機を確認してください")
-
 
 if __name__ == '__main__':
     app = App()
