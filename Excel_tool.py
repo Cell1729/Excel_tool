@@ -11,6 +11,7 @@ import win32com
 import win32com.client
 import os
 import pythoncom
+from pdf2image import convert_from_path
 
 FONT_TYPE = 'meiryo'
 
@@ -44,15 +45,17 @@ class tab_export(ctk.CTkFrame):
     def widget(self):
         self.read_file_frame = ReadFileFrame(master=self, header_name="ファイル読み込み")
         self.read_file_frame.grid(row=0, column=0, padx=20, pady=(0,400), sticky="ew")
+        self.output_folder = outputfolder(master=self, header_name='フォルダーを選択')
+        self.output_folder.grid(row=0, column=0, padx=20, pady=(0,200), sticky='ew')
         self.explain_pdf = ctk.CTkLabel(master=self, text='シートを全て.pdfに変換', font=(FONT_TYPE,16))
         self.explain_pdf.grid(row=0, column=0)
-        self.Button_pdf = ctk.CTkButton(master=self, text='PDF変換', command=lambda: self.back_instance.pdf_exporter(file_data=self.read_file_frame.get_file_path(), outPutFolder="FOLDERPATH"))
+        self.Button_pdf = ctk.CTkButton(master=self, text='PDF変換', command=lambda:self.back_instance.pdf_exporter(file_data=self.read_file_frame.get_file_path(), outPutFolder=self.output_folder.get_folder_path()), status=0)
+
         self.Button_pdf.grid(row=0, column=0, padx=(400,0), pady=(0,0))
         self.explain_png = ctk.CTkLabel(master=self, text='シートを全て.pngに変換', font=(FONT_TYPE,16))
         self.explain_png.grid(row=0, column=0, pady=(100,0))
-        self.Button_png = ctk.CTkButton(master=self, text = 'PNG変換', command=lambda:self.pdf_exporter())
+        self.Button_png = ctk.CTkButton(master=self, text = 'PNG変換', command=self.back_instance.pdf_exporter(file_data=self.read_file_frame.get_file_path(), outPutFolder=self.output_folder.get_folder_path()), status=1)
         self.Button_png.grid(row=0, column=0, padx=(400,0), pady=(100,0))
-
 
 class Tab2Content(ctk.CTkFrame):
     def __init__(self, master=None, **kwargs):
@@ -97,15 +100,8 @@ class ReadFileFrame(ctk.CTkFrame):
             fg_color="transparent", border_width=2, text_color=("gray10", "#DCE4EE"),   # ボタンを白抜きにする
             command=self.button_select_callback, text="ファイル選択", font=self.fonts)
         self.button_select.grid(row=1, column=1, padx=10, pady=(0,10))
-        
-        # 開くボタン
-        self.button_open = ctk.CTkButton(master=self, command=self.button_open_callback, text="開く", font=self.fonts)
-        self.button_open.grid(row=1, column=2, padx=10, pady=(0,10))
 
     def button_select_callback(self):
-        """
-        選択ボタンが押されたときのコールバック。ファイル選択ダイアログを表示する
-        """
         # エクスプローラーを表示してファイルを選択する
         file_name = ReadFileFrame.file_read()
 
@@ -147,6 +143,49 @@ class ReadFileFrame(ctk.CTkFrame):
         """
         return self.textbox.get()
 
+class outputfolder(ctk.CTkFrame):
+    def __init__(self, *args, header_name="OutPutFolder", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fonts = (FONT_TYPE, 15)
+        self.header_name = header_name
+        self.setup_form()
+    
+    def setup_form(self):
+        # 行方向のマスのレイアウトを設定する。リサイズしたときに一緒に拡大したい行をweight 1に設定。
+        self.grid_rowconfigure(0, weight=1)
+        # 列方向のマスのレイアウトを設定する
+        self.grid_columnconfigure(0, weight=1)
+
+        # フレームのラベルを表示
+        self.label = ctk.CTkLabel(self, text=self.header_name, font=(FONT_TYPE, 11))
+        self.label.grid(row=0, column=0, padx=20, sticky="w")
+
+        # ファイルパスを指定するテキストボックス。これだけ拡大したときに、幅が広がるように設定する。
+        self.textbox = ctk.CTkEntry(master=self, placeholder_text="保存先フォルダーを読み込む", width=120, font=self.fonts)
+        self.textbox.grid(row=1, column=0, padx=10, pady=(0,10), sticky="ew")
+
+        # ファイル選択ボタン
+        self.button_select = ctk.CTkButton(master=self, 
+            fg_color="transparent", border_width=2, text_color=("gray10", "#DCE4EE"),   # ボタンを白抜きにする
+            command=self.button_select_callback, text="フォルダーを選択", font=self.fonts)
+        self.button_select.grid(row=1, column=1, padx=10, pady=(0,10))
+
+    def button_select_callback(self):
+        try:
+            # エクスプローラーを表示してフォルダーを選択する
+            iDir = os.path.abspath(os.path.dirname(__file__))
+            folder_path = filedialog.askdirectory(initialdir=iDir)
+
+            if folder_path is not None:
+                # フォルダーパスをテキストボックスに記入
+                self.textbox.delete(0, ctk.END)
+                self.textbox.insert(0, folder_path)
+        except:
+            None
+        
+    def get_folder_path(self):
+        return self.textbox.get()
+
 class Back_end():
     def __init__(self):
         pass
@@ -165,9 +204,9 @@ class Back_end():
         except:
             print("エラー : 印刷エラーです。コピー機を確認してください")
     
-    def pdf_exporter(self, file_data, outPutFolder):
-        try:
-            if file_data == True:
+    def pdf_exporter(self, file_data, outPutFolder, status):
+        if os.path.exists(file_data):
+            try:
                 pythoncom.CoInitialize()
                 excel = win32com.client.Dispatch("Excel.Application")
                 if not os.path.exists(outPutFolder):
@@ -185,8 +224,16 @@ class Back_end():
                             os.remove(output_path)
                         wb1.ActiveSheet.ExportAsFixedFormat(0, output_path)
                     wb1.Close()
-        except Exception:
-            self.task_kill()
+            except Exception as e:
+                print(str(e))
+                self.task_kill()
+            finally:
+                #pdf -> pngの順番で変換するための判断用
+                if status==1:
+                    self.png_exporter(output_Folder=outPutFolder)
+
+    def png_exporter(self, output_Folder):
+        pass
 
     #Excelが既に開かれていた場合にTask Killを実行
     def task_kill(self):
