@@ -224,13 +224,12 @@ class Back_end():
                             os.remove(output_path)
                         wb1.ActiveSheet.ExportAsFixedFormat(0, output_path)
                     wb1.Close()
-            except Exception as e:
-                print(str(e))
-                self.task_kill()
-            finally:
                 #pdf -> pngの順番で変換するための判断用
                 if status==1:
                     self.png_exporter(output_Folder=outPutFolder)
+            except Exception as e:
+                print(str(e))
+                self.task_kill()
 
     def png_exporter(self, output_Folder):
         pass
