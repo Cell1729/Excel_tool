@@ -12,6 +12,8 @@ import win32com.client
 import os
 import pythoncom
 from pdf2image import convert_from_path
+import glob
+import time
 
 FONT_TYPE = 'meiryo'
 
@@ -49,13 +51,17 @@ class tab_export(ctk.CTkFrame):
         self.output_folder.grid(row=0, column=0, padx=20, pady=(0,200), sticky='ew')
         self.explain_pdf = ctk.CTkLabel(master=self, text='シートを全て.pdfに変換', font=(FONT_TYPE,16))
         self.explain_pdf.grid(row=0, column=0)
-        self.Button_pdf = ctk.CTkButton(master=self, text='PDF変換', command=lambda:self.back_instance.pdf_exporter(file_data=self.read_file_frame.get_file_path(), outPutFolder=self.output_folder.get_folder_path()), status=0)
-
+        self.Button_pdf = ctk.CTkButton(master=self, text='PDF変換', command=lambda:self.back_instance.pdf_exporter(file_data=self.read_file_frame.get_file_path(), outPut_Folder=self.output_folder.get_folder_path()))
         self.Button_pdf.grid(row=0, column=0, padx=(400,0), pady=(0,0))
         self.explain_png = ctk.CTkLabel(master=self, text='シートを全て.pngに変換', font=(FONT_TYPE,16))
         self.explain_png.grid(row=0, column=0, pady=(100,0))
-        self.Button_png = ctk.CTkButton(master=self, text = 'PNG変換', command=self.back_instance.pdf_exporter(file_data=self.read_file_frame.get_file_path(), outPutFolder=self.output_folder.get_folder_path()), status=1)
+        self.Button_png = ctk.CTkButton(master=self, text = 'PNG変換', command=lambda:self.back_instance.png_exporter(filedata=self.read_file_frame.get_file_path(), outputFolder=self.output_folder.get_folder_path()))
         self.Button_png.grid(row=0, column=0, padx=(400,0), pady=(100,0))
+        self.button_print = ctk.CTkButton(master=self, text='印刷', font=(FONT_TYPE, 16), command=lambda:self.back_instance.printer(file_path=self.read_file_frame.get_file_path()))
+        self.button_print.grid(row=0, column=0, padx=(700,0), pady=(400,0))
+        self.print_explain = ctk.CTkLabel(master=self, text='Excelのすべてのシートを印刷', font=(FONT_TYPE, 16))
+        self.print_explain.grid(row=0, column=0, padx=(675,0), pady=(325,0))
+
 
 class Tab2Content(ctk.CTkFrame):
     def __init__(self, master=None, **kwargs):
@@ -204,13 +210,13 @@ class Back_end():
         except:
             print("エラー : 印刷エラーです。コピー機を確認してください")
     
-    def pdf_exporter(self, file_data, outPutFolder, status):
+    def pdf_exporter(self, file_data, outPut_Folder):
         if os.path.exists(file_data):
             try:
                 pythoncom.CoInitialize()
                 excel = win32com.client.Dispatch("Excel.Application")
-                if not os.path.exists(outPutFolder):
-                    os.makedirs(outPutFolder)
+                if not os.path.exists(outPut_Folder):
+                    os.makedirs(outPut_Folder)
                 excel_data = oxl.load_workbook(file_data)
                 sheets_name = excel_data.sheetnames
 
@@ -219,20 +225,30 @@ class Back_end():
                     for j in sheets_name:
                         wb1 = excel.Workbooks.Open(file_data)
                         wb1.WorkSheets(j).Select()
-                        output_path = os.path.join(outPutFolder, f'{j}.pdf')
+                        output_path = os.path.join(outPut_Folder, f'{j}.pdf')
                         if os.path.exists(output_path):
                             os.remove(output_path)
                         wb1.ActiveSheet.ExportAsFixedFormat(0, output_path)
                     wb1.Close()
                 #pdf -> pngの順番で変換するための判断用
-                if status==1:
-                    self.png_exporter(output_Folder=outPutFolder)
             except Exception as e:
                 print(str(e))
                 self.task_kill()
 
-    def png_exporter(self, output_Folder):
-        pass
+    def png_exporter(self, filedata, outputFolder):
+        self.pdf_exporter(file_data=filedata, outPut_Folder=outputFolder)
+        time.sleep(5)
+        # output_Folder内の全てのPDFファイルをリストアップ
+        pdf_files = glob.glob(f"{outputFolder}/*.pdf")
+        
+        for pdf_file in pdf_files:
+            # 各PDFファイルをPNGに変換
+            pages = convert_from_path(pdf_file, 200, last_page=1)
+            # 変換されたPNGを保存するファイル名を生成
+            # 元のPDFファイル名を使用し拡張子を.pngに変更
+            png_file_name = pdf_file.replace('.pdf', '.png')
+            # 最初のページのみをPNGに変換して保存
+            pages[0].save(png_file_name, "PNG")
 
     #Excelが既に開かれていた場合にTask Killを実行
     def task_kill(self):
